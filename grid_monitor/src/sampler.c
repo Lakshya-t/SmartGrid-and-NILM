@@ -40,6 +40,17 @@ static volatile bool fast_en;
 static struct sampler_stats stats;
 static float fs_actual = FS_NOMINAL_HZ;
 
+/*
+ * IIR low-pass filter state for V and I channels.
+ * y[n] = y[n-1] + ((x[n] - y[n-1]) >> IIR_SHIFT)
+ * With IIR_SHIFT=2: alpha=0.25, effective cutoff ~540 Hz at 10240 sps.
+ * Phase shift at 50 Hz ≈ 5° — applied equally to both channels so the
+ * relative V-I phase (power factor) is preserved exactly.
+ */
+#define IIR_SHIFT 2
+static int32_t iir_v;   /* voltage filter state (ADC counts × 1) */
+static int32_t iir_i;   /* current filter state (ADC counts × 1) */
+
 /* ---------------------------------------------------------------- ISR -- */
 
 static void block_done(const uint32_t *blk)
@@ -52,10 +63,19 @@ static void block_done(const uint32_t *blk)
 
 	for (uint32_t k = 0; k < BLOCK_SAMPLES; k++) {
 		uint32_t s = blk[k];
+		int32_t v_raw = (int32_t)(s & 0xFFFFu);
 		int32_t c = (int32_t)((s >> 16) & 0xFFFFu);
-		int32_t d = c - ofs;
 
-		ring[(w + k) & (RING_SAMPLES - 1u)] = s;
+		/* IIR low-pass: y += (x - y) >> IIR_SHIFT */
+		iir_v += (v_raw - iir_v) >> IIR_SHIFT;
+		iir_i += (c     - iir_i) >> IIR_SHIFT;
+
+		/* Re-pack filtered samples and store in ring */
+		uint32_t filtered = ((uint32_t)(iir_i & 0xFFFFu) << 16)
+				  |  ((uint32_t)(iir_v & 0xFFFFu));
+		ring[(w + k) & (RING_SAMPLES - 1u)] = filtered;
+
+		int32_t d = iir_i - ofs;
 		if (d < 0) {
 			d = -d;
 		}
@@ -241,6 +261,8 @@ int sampler_init(void)
 
 int sampler_start(void)
 {
+	iir_v = 2048;
+	iir_i = (ofs_i > 0) ? ofs_i : 2048;
 	if (HAL_ADC_Start(&hadc2) != HAL_OK) {
 		return -EIO;
 	}
