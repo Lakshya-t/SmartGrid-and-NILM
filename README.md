@@ -142,7 +142,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
-Open `http://localhost:8501` to view live waveform plots (V, I) and real-time telemetry gauges.
+Streamlit will automatically launch your default browser (or navigate to the URL printed in your terminal, typically `http://localhost:8501`). Select your Nucleo ST-LINK COM port from the sidebar dropdown and click **Connect**.
 
 ---
 
