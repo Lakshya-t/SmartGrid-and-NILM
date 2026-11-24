@@ -267,6 +267,7 @@ void tracker_on_cycle(struct tracker *t, const struct app_cfg *c,
 			t->inrush = (m->irms < c->t_min_irms || m->ipeak < 1e-3f) ?
 				    1.0f : t->peak_since_event / m->ipeak;
 			t->since_fft = c->fft_interval;   /* run FFT at once */
+			out->need_fft = true;
 		}
 	} else { /* STEADY */
 		float lim = 3.0f * eps;

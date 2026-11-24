@@ -41,14 +41,14 @@ void cfg_defaults(struct app_cfg *c)
 	c->v_high        = 0.0f;
 	c->v_low         = 0.0f;
 	c->banned_mask   = 0;
-	c->t_min_irms    = 0.015f;
+	c->t_min_irms    = 0.080f;
 	c->t_thd_res     = 0.20f;
 	c->t_pf_res      = 0.90f;
 	c->t_thd_smps    = 0.20f;
 	c->t_h3_smps     = 0.10f;
 	c->t_inrush_motor = 1.6f;
 	c->t_event_w     = 2.0f;
-	c->t_eps_a       = 0.015f;
+	c->t_eps_a       = 0.035f;
 	c->steady_cycles = 3;
 	c->fft_interval  = 10;
 	c->debounce      = 3;

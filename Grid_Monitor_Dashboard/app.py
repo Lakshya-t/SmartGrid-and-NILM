@@ -157,7 +157,12 @@ st.header("Live voltage and current waveforms")
 st.write("The dashboard repeatedly requests short ADC snapshots using the existing `grid dump` shell command.")
 connected = st.session_state.client is not None and st.session_state.client.is_open
 live = st.toggle("Enable live waveform updates", value=False, disabled=not connected)
-batch = st.select_slider("Samples per snapshot", options=[32, 64, 128, 256], value=128)
+col_b, col_m = st.columns([1, 1])
+with col_b:
+    batch = st.select_slider("Snapshot window (samples)", options=[128, 256, 512, 1024], value=512)
+with col_m:
+    disp_mode = st.radio("Display style", ["Continuous Snapshot (Oscilloscope)", "Stitched History"], horizontal=True)
+
 if not connected:
     st.info("Connect to the STM32 to enable waveform capture.")
 elif not live:
@@ -175,10 +180,14 @@ def waveform_panel():
             st.session_state.wave_fs = fs or st.session_state.wave_fs
             st.session_state.wave_kv = kv or st.session_state.wave_kv
             st.session_state.wave_ki = ki or st.session_state.wave_ki
-            st.session_state.wave_v.extend(x[0] for x in samples)
-            st.session_state.wave_i.extend(x[1] for x in samples)
-            st.session_state.wave_v = st.session_state.wave_v[-2048:]
-            st.session_state.wave_i = st.session_state.wave_i[-2048:]
+            if disp_mode == "Continuous Snapshot (Oscilloscope)":
+                st.session_state.wave_v = [x[0] for x in samples]
+                st.session_state.wave_i = [x[1] for x in samples]
+            else:
+                st.session_state.wave_v.extend(x[0] for x in samples)
+                st.session_state.wave_i.extend(x[1] for x in samples)
+                st.session_state.wave_v = st.session_state.wave_v[-2048:]
+                st.session_state.wave_i = st.session_state.wave_i[-2048:]
             st.session_state.wave_count += len(samples)
             st.session_state.wave_error = None
     except Exception as e:
@@ -196,23 +205,16 @@ def waveform_panel():
         "Voltage (V)": [(x-voff)*st.session_state.wave_kv for x in v],
         "Current (A)": [(x-ioff)*st.session_state.wave_ki for x in i],
     }).set_index("Time (ms)")
-    st.caption(f"Rolling window: {len(v)} samples · {fs:.1f} samples/s · total samples received: {st.session_state.wave_count}")
-    if len(v) < 1024:
-        st.info("Collecting 1024 samples to estimate the ADC midpoint. Raw ADC counts are shown meanwhile.")
-        left, right = st.columns(2)
-        with left:
-            st.markdown("**Voltage ADC samples (counts)**"); st.line_chart(frame[["Voltage ADC counts"]], height=250)
-        with right:
-            st.markdown("**Current ADC samples (counts)**"); st.line_chart(frame[["Current ADC counts"]], height=250)
-    else:
-        st.caption("V/A estimates use the dump header's kv/ki factors and rolling-mean offset removal. Validate calibration against known instruments.")
-        left, right = st.columns(2)
-        with left:
-            st.markdown("**Voltage waveform (V)**"); st.line_chart(frame[["Voltage (V)" ]], height=270)
-        with right:
-            st.markdown("**Current waveform (A)**"); st.line_chart(frame[["Current (A)" ]], height=270)
+    st.caption(f"Window: {len(v)} samples ({len(v)*1000/fs:.1f} ms) · {fs:.1f} samples/s")
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Voltage waveform (V)**"); st.line_chart(frame[["Voltage (V)"]], height=270)
+    with right:
+        st.markdown("**Current waveform (A)**"); st.line_chart(frame[["Current (A)"]], height=270)
     if st.button("Clear waveform history", key="clear_wave"):
         st.session_state.wave_v, st.session_state.wave_i = [], []
+        st.session_state.wave_count = 0
+        st.rerun()
         st.session_state.wave_count = 0
         st.rerun()
 
