@@ -81,7 +81,29 @@ with st.sidebar:
     if st.session_state.updated:
         st.caption("Updated " + st.session_state.updated.strftime("%H:%M:%S"))
     st.divider()
-    st.info("Read-only mode. Relay and configuration writes are disabled.")
+    with st.expander("Bench Calibration (0-15V)", expanded=False):
+        cal_v = st.number_input("Known bench AC Volts (e.g. 5.0 or 12.0)", min_value=1.0, max_value=250.0, value=5.0, step=0.5)
+        if st.button("Calibrate Voltage", disabled=not connected, use_container_width=True):
+            try:
+                st.session_state.client.command(f"grid cal v {cal_v}")
+                st.session_state.client.command("grid cfg save")
+                st.success(f"Calibrated to {cal_v}V!")
+                refresh_measurements()
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+        if st.button("Set Low-Voltage Thresholds (0.05W)", disabled=not connected, use_container_width=True):
+            try:
+                st.session_state.client.command("grid cfg set t_event_w 0.05")
+                st.session_state.client.command("grid cfg set t_min_irms 0.005")
+                st.session_state.client.command("grid cfg set t_eps_a 0.005")
+                st.session_state.client.command("grid cfg save")
+                st.success("Configured for Low-Voltage Bench (0.05W event threshold)!")
+                refresh_measurements()
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    st.info("Bench monitoring active. Live updates enabled.")
 
 if not choices:
     st.warning("No serial ports detected. Connect the Nucleo and refresh the page.")
