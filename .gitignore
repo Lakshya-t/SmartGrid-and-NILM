@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.venv*/
+env/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Zephyr RTOS dependencies & Toolchains (managed by west manifest: grid_monitor/west.yml)
+zephyr/
+modules/
+toolchain/
+.west/
+
+# Build artifacts
+build/
+*.bin
+*.hex
+*.elf
+*.map
+*.o
+*.a
+*.dSYM/
+test_main
+
+# Documentation & image binaries (per user instruction)
+*.md
+!/README.md
+*.pdf
+*.png
+*.jpg
+!/hardware_schematic.jpg
+*.jpeg
+
+# Editor & OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

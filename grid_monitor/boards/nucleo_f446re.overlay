@@ -1,0 +1,62 @@
+/*
+ * Board overlay for the Grid Monitor on the STM32 Nucleo-F446RE.
+ *
+ *  PA0  voltage input (ADC1 IN0)      - set up directly by src/sampler.c
+ *  PA1  current input (ADC2 IN1)      - set up directly by src/sampler.c
+ * 2N2222 low-side driver for active-low 5V relay module.
+ * PA8 HIGH = transistor ON = relay ON
+ * PA8 LOW  = transistor OFF = relay OFF
+ *  PA5  LD2 on-board LED              - from the board's led0 alias
+ *  USART2 (PA2/PA3) 115200 baud       - shell and logs through ST-LINK
+ */
+
+/* Free the pins and timer we need by switching off board peripherals
+ * that would otherwise claim them. */
+/delete-node/ &boot_partition;
+/delete-node/ &storage_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &scratch_partition;
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+	};
+
+	zephyr,user {
+    /*
+     	* Direct connection to active-low 5V relay module.
+     	* PA8 LOW  = relay ON
+     	* PA8 HIGH = relay OFF
+     	*/
+    	relay-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&i2c3  { status = "disabled"; };   /* uses PA8 */
+&spi1  { status = "disabled"; };   /* uses PA5 */
+&pwm2  { status = "disabled"; };
+&timers2 { status = "disabled"; }; /* TIM2 is the ADC sample clock */
+
+/*
+ * Flash layout (512 KB): firmware in the first 256 KB, two 128 KB sectors at
+ * the end for the NVS fault log and saved settings.
+ */
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		code_partition: partition@0 {
+			label = "code";
+			reg = <0x00000000 DT_SIZE_K(256)>;
+			read-only;
+		};
+
+		storage_partition: partition@40000 {
+			label = "storage";
+			reg = <0x00040000 DT_SIZE_K(256)>;
+		};
+	};
+};

@@ -1,0 +1,21 @@
+# West manifest: lets a teammate create the whole workspace with 3 commands.
+#   west init -l grid_monitor
+#   west update
+# It pins Zephyr and fetches only the modules this project needs
+# (the full Zephyr module set is several GB).
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.2.0
+      import:
+        name-allowlist:
+          - cmsis
+          - cmsis_6
+          - cmsis-dsp
+          - hal_stm32
+  self:
+    path: grid_monitor

@@ -1,0 +1,18 @@
+# Application Kconfig: pull in the STM32 HAL modules that src/sampler.c calls
+# directly. These HAL symbols have no prompt, so they can only be selected,
+# not set in prj.conf.
+
+mainmenu "Grid Monitor"
+
+config GRID_USES_STM32_HAL
+	bool
+	default y
+	select USE_STM32_HAL_ADC
+	select USE_STM32_HAL_ADC_EX
+	select USE_STM32_HAL_DMA
+	select USE_STM32_HAL_DMA_EX
+	select USE_STM32_HAL_TIM
+	select USE_STM32_HAL_TIM_EX
+	select USE_STM32_HAL_GPIO
+
+source "Kconfig.zephyr"
