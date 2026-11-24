@@ -23,20 +23,16 @@ An open-source edge monitoring system that combines high-speed synchronous mains
 
 ---
 
-## Quick Reference Specs
+## Key Specifications
 
 | Parameter | Specification |
 | :--- | :--- |
-| **Microcontroller** | STM32 Nucleo-F446RE (ARM Cortex-M4 @ 180 MHz, 512 KB Flash, 128 KB SRAM) |
-| **Operating System** | Zephyr RTOS v4.2.0 (Preemptive Priority-Based Scheduling) |
-| **Sampling Rate** | 10,240 Hz (TIM2 TRGO hardware triggered, dual-regular simultaneous) |
-| **Sampling Resolution** | 12-bit ADC, $0.0^\circ$ hardware phase skew (Dual DMA Mode 2) |
-| **Protection Response** | Instantaneous peak trip in $< 1.56\text{ ms}$ (DMA ISR level) |
-| **Mains Metrics** | True RMS $V_{\text{rms}}, I_{\text{rms}}$, Active ($P$), Apparent ($S$), Reactive ($Q$), Power Factor ($\text{PF}$), Frequency ($f$) |
-| **Spectral Analysis** | 2048-point real FFT, $5.0\text{ Hz}$ bin resolution, fundamental $I_1$, $h_3, h_5, h_7$, $\text{THD}$ |
-| **Appliance Classes** | Resistive, SMPS, Motor / Inductive, Standby / Idle |
-| **Inference Latency** | Sub-cycle (< 0.8 ms per cycle in Zephyr DSP thread) |
-| **Memory Footprint** | 182 KB Flash (69.5%), 87 KB SRAM (66.6%) on STM32F446RE |
+| **Microcontroller** | STM32 Nucleo-F446RE (ARM Cortex-M4 @ 180 MHz) |
+| **Operating System** | Zephyr RTOS v4.2.0 (Preemptive Scheduler) |
+| **Acquisition Engine** | 10,240 Hz Synchronous Dual-ADC ($0.0^\circ$ Phase Skew) |
+| **Fault Protection** | Instantaneous Trip in $< 1.56\text{ ms}$ (Sub-2ms Hardware Cutoff) |
+| **FFT & Harmonics** | 2048-point CMSIS-DSP Real FFT ($h_3, h_5, h_7, \text{THD}$) |
+| **Appliance Classes** | Resistive, SMPS, Motor / Inductive, Standby |
 
 ---
 
