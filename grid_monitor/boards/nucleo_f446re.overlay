@@ -3,9 +3,13 @@
  *
  *  PA0  voltage input (ADC1 IN0)      - set up directly by src/sampler.c
  *  PA1  current input (ADC2 IN1)      - set up directly by src/sampler.c
- * 2N2222 low-side driver for active-low 5V relay module.
- * PA8 HIGH = transistor ON = relay ON
- * PA8 LOW  = transistor OFF = relay OFF
+ *
+ * Relay module (active-low, 5V coil) connected DIRECTLY to PA8 (D7) -
+ * NO external transistor or MOSFET.
+ * PA8 LOW  (0 V) = relay IN LOW  = relay energised (load ON)
+ * PA8 HIGH (3.3V) = relay IN HIGH = relay off (load OFF)
+ * GPIO_ACTIVE_LOW tells Zephyr: gpio_pin_set(relay, 1) drives PA8 LOW.
+ *
  *  PA5  LD2 on-board LED              - from the board's led0 alias
  *  USART2 (PA2/PA3) 115200 baud       - shell and logs through ST-LINK
  */
@@ -29,7 +33,7 @@
      	* PA8 LOW  = relay ON
      	* PA8 HIGH = relay OFF
      	*/
-    	relay-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+    	relay-gpios = <&gpioa 8 GPIO_ACTIVE_LOW>;
 	};
 };
 
