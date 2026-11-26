@@ -42,8 +42,6 @@ test_main
 # Documentation & image binaries (per user instruction)
 *.md
 !/README.md
-!/Interim_Presentation_Guide.md
-!/NILM_Doubts_and_Solutions_Log.md
 *.pdf
 *.png
 *.jpg

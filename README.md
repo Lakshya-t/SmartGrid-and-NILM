@@ -1,139 +1,185 @@
 # Smart Grid Edge Monitor
 
-> **Micro-PMU, Sub-2ms Fast Protection & Non-Intrusive Load Monitoring (NILM)**  
-> **Platform:** STM32 Nucleo-F446RE (ARM Cortex-M4) · Zephyr RTOS · Python Streamlit
+> **Synchronous Micro-PMU, Sub-2ms Protection & Physics-Informed NILM Engine**  
+> **Target:** STM32 Nucleo-F446RE (ARM Cortex-M4 @ 180 MHz) · Zephyr RTOS · Python Streamlit Dashboard
 
 ---
 
-An open-source edge monitoring system that combines high-speed synchronous mains acquisition, hardware circuit protection, and harmonic load classification into a single microcontroller.
-
----
-
-## Hardware Architecture & Interfacing
-
-<p align="center">
-  <img src="hardware_schematic.jpg" alt="Smart Grid Monitor Hardware Interfacing Schematic" width="680">
-</p>
-
-### Channel Specifications
-* **Voltage Input (PA0 / ADC1 Channel 0):** ZMPT101B module via 4.7 kΩ / 10 kΩ resistive divider (0.68×) and 15 nF filter (fc ≈ 3.2 kHz)
-* **Current Input (PA1 / ADC2 Channel 1):** SCT-013-000 current clamp across 220 Ω burden resistor + 1.65 V mid-rail DC bias node (10 kΩ / 10 kΩ with 10 µF capacitor) and 15 nF filter (fc ≈ 3.2 kHz)
-* **Relay Protection (PA8 / GPIO D7):** Drives 2N2222 NPN transistor base (1 kΩ series, 10 kΩ pull-down) to switch Songle 5V active-low relay module with fail-safe boot state
-* **Host Telemetry:** ST-LINK USB Virtual COM Port (115200 8-N-1) on USART2
+An edge smart grid monitor combining synchronous dual-channel mains acquisition, hardware circuit protection, and harmonic Non-Intrusive Load Monitoring (NILM) into a single microcontroller. Operates on both **230 V AC mains** and **low-voltage lab bench supplies (0–20 V AC, 50 Hz)**.
 
 ---
 
 ## Key Specifications
 
-| Parameter | Specification |
-| :--- | :--- |
-| **Microcontroller** | STM32 Nucleo-F446RE (ARM Cortex-M4 @ 180 MHz) |
-| **Operating System** | Zephyr RTOS v4.2.0 (Preemptive Scheduler) |
-| **Acquisition Engine** | 10,240 Hz Synchronous Dual-ADC (0.0° Phase Skew) |
-| **Fault Protection** | Instantaneous Trip in < 1.56 ms (Sub-2ms Hardware Cutoff) |
-| **FFT & Harmonics** | 2048-point CMSIS-DSP Real FFT (h3, h5, h7, THD) |
-| **Appliance Classes** | Resistive, SMPS, Motor / Inductive, Standby |
+| Parameter | Specification | Notes |
+| :--- | :--- | :--- |
+| **Microcontroller** | STM32 Nucleo-F446RE | ARM Cortex-M4 with FPU @ 180 MHz, 512 KB Flash, 128 KB SRAM |
+| **Operating System** | Zephyr RTOS v4.2.0 | Preemptive multi-threading with `zbus` inter-thread messaging |
+| **Grid Frequency** | **50.0 Hz** | Synchronous timing geometry (204.8 samples/cycle) |
+| **Operating Voltages** | **0–20 V AC** (Bench) / **230 V AC** (Mains) | Scaled via calibration constant `k_v` stored in NVS flash |
+| **Acquisition Engine** | 10,240 Hz Dual Synchronous ADC | Dual ADC1+ADC2 triggered by TIM2 TRGO, DMA2 Stream 0 circular mode |
+| **Anti-Noise Filter** | Real-Time Balanced IIR Low-Pass | Identical $f_c \approx 540\text{ Hz}$ filter on V & I preserving relative phase angle ($\Delta\phi$) |
+| **Fault Protection** | Instantaneous Trip in < 1.56 ms | Evaluated every 16-sample DMA block; hardware cutoff via relay |
+| **FFT Engine** | 2048-point CMSIS-DSP Real FFT | Extracts fundamental, $h_3, h_5, h_7$, THD, and phasor phase angle |
+| **Load Classification** | Deterministic Physics State Machine | Classifies Resistive, SMPS, Motor / Inductive, and Standby / No Load |
+| **Transient Filter** | 3-Cycle Temporal Filter | Rejects contact-bounce EMI glitches before accepting state changes |
 
 ---
 
-## RTOS Thread Architecture
+## Hardware Interfacing & Pinout
 
-Safety protection and heavy signal processing are decoupled across preemptive priority levels:
+<p align="center">
+  <img src="hardware_schematic.jpg" alt="Smart Grid Monitor Hardware Interfacing Schematic" width="680">
+</p>
 
-1. **Priority 0 — Protection & Cycle Detection (`protect.c`):**  
-   Runs directly on 16-sample DMA half-buffer completions (1.5625 ms). Evaluates instantaneous peak limits and ADC rail saturation (`CLIP_LO = 6`, `CLIP_HI = 4089`) for sub-2ms relay cutoff. Tracks zero crossings with hysteresis and integrates discrete cycle metrics.
-2. **Priority 2 — DSP & NILM Engine (`dsp_task.c`):**  
-   Consumes cycle events over Zephyr `zbus`. Executes 2048-point CMSIS-DSP FFT, harmonic extraction, and 3-cycle temporal confidence debouncing.
-3. **Priority 5 — Shell & Telemetry (`grid_shell.c`, `telemetry.c`):**  
-   Manages NVS flash fault logging, serial interactive shell, and live telemetry streaming to the host dashboard.
+### Pin Connections
 
----
+| Module Pin | STM32 Nucleo Pin | Signal / Function | Notes |
+| :--- | :--- | :--- | :--- |
+| **ZMPT101B VCC** | **5V** (CN6) | Module Power | Requires 5V for linear op-amp operation |
+| **ZMPT101B GND** | **GND** | Common Ground | Must share ground with STM32 |
+| **ZMPT101B OUT** | **PA0** (ADC1 IN0) | Voltage Channel | Connect through series resistor + 100 nF LP filter to GND |
+| **SCT-013 Tip** | **PA1** (ADC2 IN1) | Current Signal | Across 220 Ω burden resistor, through 3.3 kΩ to PA1 |
+| **SCT-013 Sleeve** | **1.65 V Bias Node** | DC Virtual Ground | Midpoint of 10 kΩ / 10 kΩ divider from 3.3 V (Do NOT connect directly to GND) |
+| **Relay IN** | **PA8** (D7) | Relay Trip Control | Direct active-low control (`GPIO_ACTIVE_LOW` in device tree) |
+| **Relay VCC** | **5V** (CN6) | Relay Coil Power | 5V supply |
+| **Relay GND** | **GND** | Common Ground | Shared ground |
+| **ST-LINK USB** | **USART2 (PA2/PA3)** | Host Telemetry | 115200 baud, 8-N-1 Virtual COM Port |
 
-## Mathematical Formulation
-
-### 1. Timing Geometry & FFT Bin Alignment
-* For 50 Hz mains sampled at fs = 10,240 Hz, each cycle contains exactly 204.8 samples.
-* A window of N = 2048 samples covers exactly 10 full cycles:
-
-```
-Bin Resolution:        Δf = fs / N = 10,240 Hz / 2048 = 5.0 Hz / bin
-Fundamental (50 Hz):   bin = 50 / 5 = 10
-3rd Harmonic (150 Hz): bin = 150 / 5 = 30
-5th Harmonic (250 Hz): bin = 250 / 5 = 50
-```
-Exact integer bin alignment completely eliminates spectral leakage.
-
-### 2. Adaptive DC Midpoint Cancellation
-An exponential single-pole low-pass filter tracks the 1.65 V DC bias midpoint dynamically without phase lag:
-
-```
-midpoint_new = midpoint_old + 0.25 × (cycle_mean - midpoint_old)
-```
-
-### 3. Discrete Power & RMS Integration
-Calculated in O(1) time per sample using running statistical sums:
-
-```
-V_rms = k_v × sqrt( (Σ v² / N) - (v_mean)² )
-I_rms = k_i × sqrt( (Σ i² / N) - (i_mean)² )
-
-Active Power (P)    = k_v × k_i × ( (Σ v·i / N) - (v_mean × i_mean) )
-Apparent Power (S)  = V_rms × I_rms
-Power Factor (PF)   = P / S
-Reactive Power (Q)  = sqrt( max(S² - P², 0) )
-```
-
-### 4. Harmonic Distortion & Ratios
-Extracted from the 2048-point real FFT spectrum:
-
-```
-Harmonic Ratio (hn) = I_n / I_1
-Total Harmonic Distortion (THD) = sqrt( Σ I_n² ) / I_1   (for n = 2 to 50)
-```
+> [!IMPORTANT]
+> **CT Clamp Direction:** Clamp the SCT-013 current transformer over the **Phase/Live wire only**. Clamping both Live and Neutral simultaneously cancels the magnetic fields, resulting in zero current reading.
 
 ---
 
-## NILM Classification Model
+## Operating Voltage Modes: Bench (0–20 V) vs Mains (230 V)
 
-Rather than using computationally heavy black-box neural networks that require impractical training datasets, the edge firmware employs a **Deterministic Physics-Informed State Machine** based on fundamental electrical circuit properties:
+The firmware natively supports both lab-bench safety testing and full mains deployment:
 
-* **Resistive (`LOAD_RESISTIVE`):** Electric heaters, kettles, irons.  
-  *Characteristics:* THD < 20%, |PF| ≥ 0.90.
-* **Switch-Mode Power Supply (`LOAD_SMPS`):** Laptop chargers, phone adapters, LED drivers.  
-  *Characteristics:* Bridge rectifier pulse conduction causes THD ≥ 20% and 3rd harmonic ratio h3 ≥ 10%.
-* **Motor / Inductive (`LOAD_MOTOR`):** Fans, pumps, refrigerator compressors.  
-  *Characteristics:* Magnetic flux lag and startup surge → Inrush ratio ≥ 1.6× or |PF| < 0.90 with clean current.
-* **Standby / Disconnected (`LOAD_NONE`):** Current < 15 mA for ≥ 5 consecutive cycles.
-
-### EMI Suppression (Bhattacharya Temporal Filter)
-Whenever an appliance turns on or off, mechanical contact arcing causes transient voltage spikes. The classification output is gated by a **3-cycle temporal confidence filter**: appliance state must remain stable for 3 consecutive inference cycles (60 ms) before updating the output, completely rejecting switching glitches.
+1. **Lab Bench Mode (0–20 V AC, 50 Hz):**
+   - Supply a 50 Hz sine wave from a function generator (set to **High-Z**, $1\text{–}2\text{ V}_\text{pp}$) or a low-voltage AC transformer to the ZMPT101B primary.
+   - In the Streamlit dashboard sidebar under **Bench Calibration (0-15V)**:
+     - Enter your actual bench voltage (e.g. `12.0`) and click **Calibrate Voltage**.
+     - Click **Set Low-Voltage Thresholds (0.05W)** to configure `t_event_w = 0.05 W` and `t_min_irms = 0.005 A` for sensitive bench loads.
+2. **Mains Mode (230 V AC, 50 Hz):**
+   - Connect to mains via appropriate safety isolation.
+   - Enter `230.0` and click **Calibrate Voltage**. Default full-scale thresholds (`t_event_w = 2.0 W`, `t_min_irms = 0.080 A`) apply.
 
 ---
 
-## Scientific Literature & References
+## Multi-Threaded RTOS Architecture
 
-1. **George W. Hart (1992)** — *"Nonintrusive Appliance Load Monitoring"*, **Proceedings of the IEEE**, Vol. 80, No. 12, pp. 1870–1891. *(Foundational NILM signature framework).*
-2. **Asmit Bhattacharya (2026)** — *"Non-Intrusive Load Monitoring via Edge-Based TinyML on Microcontrollers: A Low-Latency Approach for Residential Energy Efficiency"*, **IJERT**, Vol. 15, Issue 03. *(Temporal confidence filter for edge EMI immunity).*
-3. **IEEE Standard 1459-2010** — *"IEEE Standard Definitions for the Measurement of Electric Power Quantities Under Sinusoidal, Nonsinusoidal, Balanced, or Unbalanced Conditions."*
-4. **IEC 61000-3-2** — *"Electromagnetic Compatibility (EMC) - Limits for Harmonic Current Emissions."*
+The firmware decouples critical protection timing from signal processing using preemptive Zephyr threads:
+
+```
++-------------------------------------------------------------------------+
+|                  TIM2 Hardware Sample Clock (10,240 Hz)                 |
++-------------------------------------------------------------------------+
+                                    | (Hardware Trigger)
+                                    v
++-------------------------------------------------------------------------+
+|        Simultaneous Dual ADC (ADC1: PA0 Voltage, ADC2: PA1 Current)      |
++-------------------------------------------------------------------------+
+                                    | (Circular DMA)
+                                    v
++-------------------------------------------------------------------------+
+| Priority 0: Protection Thread (protect.c) - Every 16 samples (1.56 ms)   |
+| - Instantaneous overcurrent check (< 1.56 ms trip)                      |
+| - Dual-channel balanced IIR filter (fc ≈ 540 Hz)                        |
+| - Zero-crossing tracking with hysteresis -> publishes cycle_metrics     |
++-------------------------------------------------------------------------+
+                                    | (zbus message)
+                                    v
++-------------------------------------------------------------------------+
+| Priority 2: DSP & NILM Thread (dsp_task.c)                              |
+| - 2048-point CMSIS-DSP Real FFT across 10 complete 50 Hz cycles         |
+| - Harmonic extraction (fundamental, h3, h5, h7, THD)                    |
+| - Phasor phase angle calculation (V vs I)                               |
+| - Deterministic physics-informed state machine classification           |
+| - 3-cycle temporal confidence debouncing                                |
++-------------------------------------------------------------------------+
+                                    |
+                                    v
++-------------------------------------------------------------------------+
+| Priority 5: Telemetry & Shell (telemetry.c, grid_shell.c)               |
+| - NVS Flash non-volatile fault logging                                  |
+| - Interactive UART shell at 115200 baud                                 |
+| - Live measurement streaming to Streamlit host UI                       |
++-------------------------------------------------------------------------+
+```
+
+---
+
+## Deterministic Physics-Informed NILM Engine
+
+Rather than relying on brittle, computationally heavy neural networks that require large training datasets, this monitor implements a **deterministic physics-informed state machine** based on fundamental circuit laws:
+
+```
+                    +---------------------------+
+                    | New Cycle Metrics Arrived |
+                    +---------------------------+
+                                  |
+                        [I_rms < t_min_irms?]
+                               /        \
+                            Yes          No
+                            /              \
+            +-------------------+    +-----------------------------+
+            | LOAD_NONE         |    | Steady-State Settling Check |
+            | (Standby/No Load) |    +-----------------------------+
+            +-------------------+                  |
+                                         [Is State Steady?]
+                                           /            \
+                                         No             Yes
+                                         /                \
+                         +---------------+        +----------------+
+                         | Keep Previous |        | Run 2048-pt    |
+                         | Accepted Class|        | CMSIS-DSP FFT  |
+                         +---------------+        +----------------+
+                                                           |
+                                 +-------------------------+-------------------------+
+                                 |                                                   |
+                     [THD >= 20% & h3 >= 10%?]                                [THD < 20%?]
+                                 |                                                   |
+                                Yes                                                 Yes
+                                 |                                                   |
+                     +-----------------------+                           [|Power Factor| >= 0.90?]
+                     | LOAD_SMPS             |                                   /         \
+                     | (Laptop/Phone Charger,|                                 Yes          No
+                     | LED Driver, PC Supply)|                                 /              \
+                     +-----------------------+                  +------------------+   +-------------------+
+                                                                | LOAD_RESISTIVE   |   | LOAD_MOTOR        |
+                                                                | (Heaters, Bulbs, |   | (Fans, Pumps,     |
+                                                                | Kettles, Irons)  |   | Compressors)      |
+                                                                +------------------+   +-------------------+
+```
+
+### Feature Boundaries (Dimensionless & Normalized)
+
+- **Resistive (`LOAD_RESISTIVE`):** Linear Ohm's law impedance. Voltage and current are in phase.  
+  `THD < 20%` AND `|PF| >= 0.90`.
+- **Switch-Mode Power Supply (`LOAD_SMPS`):** Input bridge rectifier conducts only near voltage peaks, generating prominent odd harmonics.  
+  `THD >= 20%` AND `h3 >= 10%`.
+- **Motor / Inductive (`LOAD_MOTOR`):** Magnetic core inductance causes fundamental current to lag voltage; startup surge creates inrush.  
+  `|PF| < 0.90` OR `Inrush Ratio >= 1.6x`.
+- **No Load / Standby (`LOAD_NONE`):** Current below threshold for $\ge 5$ consecutive cycles.  
+  `I_rms < t_min_irms`.
 
 ---
 
 ## Quickstart Guide
 
-### 1. Run Mathematical Tests on Laptop (No Hardware Needed)
-Verifies cycle integration, zero-crossing detection, CMSIS FFT stubs, and NILM classification:
+### 1. Run Unit Tests on PC (No Hardware Needed)
+
+Run the mathematical verification suite testing cycle integration, CMSIS FFT scaling, and NILM classification:
 
 ```bash
 cd grid_monitor/tests/host
 make test
 ```
-*Expected result:* `[OK] All 45 host checks passed successfully.`
+*Expected output:* `45 checks passed, 0 failed.`
 
 ---
 
-### 2. Run the Live Streamlit Dashboard
-Connect the STM32 board via USB, then run:
+### 2. Launch the Streamlit Dashboard
 
 ```bash
 cd Grid_Monitor_Dashboard
@@ -142,38 +188,44 @@ source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
-Streamlit will automatically launch your default browser (or navigate to the URL printed in your terminal, typically `http://localhost:8501`). Select your Nucleo ST-LINK COM port from the sidebar dropdown and click **Connect**.
+
+Open `http://localhost:8501` in your browser, select your Nucleo port (e.g. `/dev/cu.usbmodem1403` on macOS or `COMx` on Windows), and click **Connect**.
 
 ---
 
-### 3. Build & Flash Firmware
-Requires [Zephyr SDK 0.17.0](https://docs.zephyrproject.org/) and `west`:
+### 3. Build & Flash Firmware (STM32 Nucleo-F446RE)
+
+From the project root:
 
 ```bash
-west init -l grid_monitor
-west update
+source env_firmware.sh
 west build -b nucleo_f446re grid_monitor
-west flash
+west flash --runner openocd
 ```
+
+*(Note: Click "Disconnect" in the Streamlit UI before flashing so the ST-LINK USB interface is free).*
 
 ---
 
-## Interactive Serial Commands
+## Interactive Serial Console Commands
 
-Open the serial console at `115200 8N1` (e.g., via `screen`, `minicom`, or PuTTY):
+Connect to the board over UART (115200 8-N-1) using PuTTY, `screen`, or through the dashboard:
 
-```
-grid status        # Shows real-time Vrms, Irms, P, S, Q, PF, freq, and load class
-grid feat          # Shows FFT fundamental, h3, h5, h7, THD, and phase angle
-grid dump 128      # Streams raw ADC counts for oscilloscope reconstruction
-grid cal v 230.0   # Calibrates voltage factor against a reference multimeter
-grid cal i 1.50    # Calibrates current factor against a reference load
-grid on / off      # Manually controls the relay
-grid reset         # Clears latched trip condition and re-energizes load
-grid fault_log     # Displays flash log of previous over-current fault events
+```bash
+grid status              # Live power, frequency, relay status, and classified load
+grid feat                # Harmonic extraction: fundamental, h3, h5, h7, THD, phase angle
+grid dump 512            # Captures 512 raw synchronous ADC samples for waveform analysis
+grid cal v 12.0          # Calibrates voltage scaling factor to 12.0 V RMS (or 230.0 V)
+grid cal i 0.50          # Calibrates current scaling factor against a reference instrument
+grid cfg set t_event_w 0.05 # Sets power event threshold to 50 mW for bench loads
+grid cfg save            # Persists updated calibration and configuration to NVS flash
+grid on | off            # Manual relay energize / de-energize control
+grid reset               # Clears latched hardware trip and restores power
+grid fault_log           # Inspects persistent flash log of previous overcurrent trip events
 ```
 
 ---
 
 ## License
-MIT License. Open-source for academic and industrial research.
+
+MIT License. Open-source for academic, educational, and research use.
