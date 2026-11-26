@@ -83,6 +83,7 @@ static void sim_init(struct sim *m)
 	memset(m, 0, sizeof(*m));
 	cfg_defaults(&m->cfg);
 	m->cfg.k_v = (float)(230.0 * sqrt(2.0) / vamp);
+	m->cfg.t_event_w = 2.0f;
 	cycle_init(&m->det);
 	tracker_init(&m->tr);
 }

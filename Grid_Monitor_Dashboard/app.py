@@ -61,7 +61,7 @@ with st.sidebar:
     st.caption("115200 baud · 8-N-1 · no flow control")
     connected = st.session_state.client is not None and st.session_state.client.is_open
     if not connected:
-        if st.button("Connect", type="primary", disabled=selected is None, use_container_width=True):
+        if st.button("Connect", type="primary", disabled=selected is None, width="stretch"):
             try:
                 st.session_state.client = GridSerial(selected)
                 st.session_state.wave_v, st.session_state.wave_i = [], []
@@ -73,17 +73,46 @@ with st.sidebar:
                 st.session_state.error = str(e)
     else:
         st.success(f"Connected: {st.session_state.client.ser.port}")
-        if st.button("Disconnect", use_container_width=True):
+        if st.button("Disconnect", width="stretch"):
             close_port(); st.rerun()
     auto_refresh = st.toggle("Live telemetry updates (1s)", value=True, disabled=not connected)
-    if st.button("Refresh measurements", disabled=not connected, use_container_width=True):
+    if st.button("Refresh measurements", disabled=not connected, width="stretch"):
         with st.spinner("Reading STM32 shell..."): refresh_measurements()
     if st.session_state.updated:
         st.caption("Updated " + st.session_state.updated.strftime("%H:%M:%S"))
     st.divider()
-    with st.expander("Bench Calibration (0-15V)", expanded=False):
-        cal_v = st.number_input("Known bench AC Volts (e.g. 5.0 or 12.0)", min_value=1.0, max_value=250.0, value=5.0, step=0.5)
-        if st.button("Calibrate Voltage", disabled=not connected, use_container_width=True):
+    st.subheader("Grid control")
+    g_on, g_off, g_rst = st.columns(3)
+    with g_on:
+        if st.button("Grid ON", type="primary", disabled=not connected, width="stretch"):
+            try:
+                resp = st.session_state.client.command("grid on")
+                if "tripped" in resp.lower():
+                    st.warning(resp)
+                refresh_measurements(quick=True)
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    with g_off:
+        if st.button("Grid OFF", disabled=not connected, width="stretch"):
+            try:
+                st.session_state.client.command("grid off")
+                refresh_measurements(quick=True)
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    with g_rst:
+        if st.button("Reset", disabled=not connected, width="stretch"):
+            try:
+                st.session_state.client.command("grid reset")
+                refresh_measurements(quick=True)
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    st.divider()
+    with st.expander("Bench Calibration (AFG: 20.00 Vpp / 7.071 Vrms)", expanded=False):
+        cal_v = st.number_input("AFG AC Voltage RMS (20.00 Vpp = 7.071 Vrms)", min_value=1.0, max_value=250.0, value=7.071, step=0.001, format="%.3f")
+        if st.button("Calibrate Voltage", disabled=not connected, width="stretch"):
             try:
                 st.session_state.client.command(f"grid cal v {cal_v}")
                 st.session_state.client.command("grid cfg save")
@@ -92,7 +121,7 @@ with st.sidebar:
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
-        if st.button("Set Low-Voltage Thresholds (0.05W)", disabled=not connected, use_container_width=True):
+        if st.button("Set Low-Voltage Thresholds (0.05W)", disabled=not connected, width="stretch"):
             try:
                 st.session_state.client.command("grid cfg set t_event_w 0.05")
                 st.session_state.client.command("grid cfg set t_min_irms 0.005")
@@ -120,11 +149,10 @@ def telemetry_panel():
         return
     s, t = data["status"], data["stats"]
     st.subheader("System overview")
-    a, b, c, d = st.columns(4)
+    a, b, c = st.columns(3)
     a.metric("Relay", s.get("relay", "Unknown"))
     b.metric("Load class", s.get("load_class", "Unknown"))
     c.metric("Sampling rate", f'{t["sampling_hz"]:.1f} Hz' if t.get("sampling_hz") is not None else "—")
-    d.metric("Acquisition blocks", f'{t["blocks"]:,}' if t.get("blocks") is not None else "—")
     if "no usable" in s.get("mains_text", "").lower():
         st.warning("Firmware reports no usable voltage signal yet.")
     st.subheader("Electrical measurements")
@@ -138,14 +166,9 @@ def telemetry_panel():
         ("Apparent power", "apparent_va", "VA"), ("Reactive power", "reactive_var", "var"),
         ("Power factor", "pf", "")]):
         value = s.get(key); col.metric(label, f"{value:.3f} {unit}".strip() if value is not None else "—")
-    st.subheader("Protection and acquisition")
-    cols = st.columns(5)
-    for col, (label, key) in zip(cols, [("ADC errors", "adc_errors"), ("DMA errors", "dma_errors"),
-        ("Fast trips", "fast_trips"), ("Ring overruns", "ring_overruns"), ("FFT runs", "fft_runs")]):
-        col.metric(label, t.get(key) if t.get(key) is not None else "—")
     with st.expander("Firmware configuration (read-only)"):
         st.dataframe([{"Parameter": k, "Value": v} for k, v in data["config"].items()],
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
     with st.expander("Raw UART responses"):
         for name, raw in data["raw"].items():
             st.markdown(f"**{name}**"); st.code(raw or "(empty)", language="text")
@@ -156,10 +179,10 @@ st.divider()
 st.header("Live voltage and current waveforms")
 st.write("The dashboard repeatedly requests short ADC snapshots using the existing `grid dump` shell command.")
 connected = st.session_state.client is not None and st.session_state.client.is_open
-live = st.toggle("Enable live waveform updates", value=False, disabled=not connected)
+live = st.toggle("Enable live waveform updates", value=True, disabled=not connected)
 col_b, col_m = st.columns([1, 1])
 with col_b:
-    batch = st.select_slider("Snapshot window (samples)", options=[128, 256, 512, 1024], value=512)
+    batch = st.select_slider("Snapshot window (samples)", options=[128, 256, 512, 1024], value=256)
 with col_m:
     disp_mode = st.radio("Display style", ["Continuous Snapshot (Oscilloscope)", "Stitched History"], horizontal=True)
 
@@ -168,7 +191,7 @@ if not connected:
 elif not live:
     st.info("Enable live waveform updates to start capturing samples.")
 
-@st.fragment(run_every="700ms")
+@st.fragment(run_every="350ms" if live and connected else None)
 def waveform_panel():
     c = st.session_state.client
     if not c or not c.is_open or not live:
@@ -213,8 +236,6 @@ def waveform_panel():
         st.markdown("**Current waveform (A)**"); st.line_chart(frame[["Current (A)"]], height=270)
     if st.button("Clear waveform history", key="clear_wave"):
         st.session_state.wave_v, st.session_state.wave_i = [], []
-        st.session_state.wave_count = 0
-        st.rerun()
         st.session_state.wave_count = 0
         st.rerun()
 

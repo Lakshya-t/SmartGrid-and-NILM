@@ -26,7 +26,7 @@ void cfg_defaults(struct app_cfg *c)
 	memset(c, 0, sizeof(*c));
 	c->magic         = CFG_MAGIC;
 	c->version       = CFG_VERSION;
-	/* PLACEHOLDER: run "grid cal v <volts>" against a multimeter. */
+	/* PLACEHOLDER: run "grid cal v 7.071" for 20.00 Vpp (50 Hz) AFG sine. */
 	c->k_v           = 0.33f;
 	/* (3.3 V / 4096) / (0.110 V per A) for a 220 ohm burden, 1 turn */
 	c->k_i1          = 0.007324f;
@@ -47,7 +47,7 @@ void cfg_defaults(struct app_cfg *c)
 	c->t_thd_smps    = 0.20f;
 	c->t_h3_smps     = 0.10f;
 	c->t_inrush_motor = 1.6f;
-	c->t_event_w     = 2.0f;
+	c->t_event_w     = 0.20f;
 	c->t_eps_a       = 0.035f;
 	c->steady_cycles = 3;
 	c->fft_interval  = 10;
